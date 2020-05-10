@@ -87,7 +87,7 @@ for section in rfdSections:
         c.execute('''INSERT INTO rfd VALUES (?)''', (link,))
 
 ezgmail.send(
-    'atriumcomplex@gmail.com',
+    emails[0],
     f'RFD {datetime.datetime.today()}',
     '\n'.join(deals_list),
 )
