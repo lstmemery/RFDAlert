@@ -7,16 +7,18 @@ import configparser
 import os
 import sys
 
+from slack import WebClient
+
 os.chdir(os.path.dirname(sys.argv[0]))
 
-from urllib.request import Request
-from urllib.request import urlopen
-from urllib.parse import urljoin
-from subprocess import Popen, PIPE
+from urllib.request import Request, urlopen
 import dateutil.parser
 from bs4 import BeautifulSoup
-import ezgmail
 
+from dotenv import load_dotenv
+load_dotenv()
+
+client = WebClient(token=os.environ['SLACK_API_TOKEN'])
 
 config = configparser.ConfigParser()
 config.read([os.path.expanduser('~/.rfd.cfg')])
@@ -82,15 +84,11 @@ for section in rfdSections:
         if c.fetchone()[0] > 0: continue
 
         print(title + " " + link + " " + str(posts) + " " + str(votes))
-        deals_list.append(title + " " + link + " " + str(posts) + " " + str(votes))
 
+        response = client.chat_postMessage(
+            channel='#dealsdealsdeals',
+            text=title + " " + link + " " + str(posts) + " " + str(votes))
         c.execute('''INSERT INTO rfd VALUES (?)''', (link,))
-
-ezgmail.send(
-    emails[0],
-    f'RFD {datetime.datetime.today()}',
-    '\n'.join(deals_list),
-)
 
 conn.commit()
 conn.close()
