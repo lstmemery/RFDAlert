@@ -5,15 +5,21 @@ import re
 import datetime
 import configparser
 import os
+import sys
+
+os.chdir(os.path.dirname(sys.argv[0]))
+
 from urllib.request import Request
 from urllib.request import urlopen
 from urllib.parse import urljoin
 from subprocess import Popen, PIPE
 import dateutil.parser
 from bs4 import BeautifulSoup
+import ezgmail
+
 
 config = configparser.ConfigParser()
-config.read(['rfd.cfg', os.path.expanduser('~/.rfd.cfg')])
+config.read([os.path.expanduser('~/.rfd.cfg')])
 config = config['rfd']
 
 conn = sqlite3.connect(config['db_path'])
@@ -23,6 +29,8 @@ emails = [email.strip() for email in config['emails'].split(',')]
 
 rfdUrl = "http://forums.redflagdeals.com"
 rfdSections = [section.strip() for section in config['sections'].split(',')]
+
+deals_list = []
 
 for section in rfdSections:
     userAgent = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.78 Safari/537.36'}
@@ -65,7 +73,7 @@ for section in rfdSections:
 
         timeSensitiveDeal = any(needle in title.lower() for needle in ['lava', 'error'])
 
-        if (not timeSensitiveDeal and votes < 5*daysOld and posts < 10*daysOld) or votes < 0: continue
+        if (not timeSensitiveDeal and votes < 5*daysOld and posts < 10*daysOld) or votes < 30: continue
 
         link = rfdUrl+titleSoup.find("a", {"class" : "topic_title_link"})['href']
 
@@ -74,26 +82,15 @@ for section in rfdSections:
         if c.fetchone()[0] > 0: continue
 
         print(title + " " + link + " " + str(posts) + " " + str(votes))
+        deals_list.append(title + " " + link + " " + str(posts) + " " + str(votes))
 
-        # Fetch post contents
-        threadReq = Request(link, None, userAgent)
-        threadContent = urlopen(threadReq, timeout=10).read().decode('utf-8', 'ignore')
-        threadSoup = BeautifulSoup(threadContent, "lxml")
-        for elem in threadSoup.findAll(['script', 'style']):
-            elem.extract()
-
-        dealSoup = threadSoup.find("div", {"class":"post_content"})
-        if not dealSoup: continue
-
-        # Convert relative links to absolute links.
-        for a in dealSoup.findAll('a', href=True):
-            a['href'] = urljoin(rfdUrl, a['href'])
-        args = ["mutt", "-e", "set content_type=text/html", "-s", str(posts) + "|" + str(votes) + ": " + title]
-        args.extend(emails)
-        p = Popen(args, stdin=PIPE)
-        p.communicate(input=bytes('<a href="'+link+'"/a>'+str(dealSoup), 'utf-8'))
-        if p.returncode != 0: continue
-        print(p.returncode)
         c.execute('''INSERT INTO rfd VALUES (?)''', (link,))
+
+ezgmail.send(
+    'atriumcomplex@gmail.com',
+    f'RFD {datetime.datetime.today()}',
+    '\n'.join(deals_list),
+)
+
 conn.commit()
 conn.close()
